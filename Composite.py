@@ -1,0 +1,96 @@
+import os
+import sys
+
+from PIL import Image
+from PIL import ImageOps
+from TextPos import TextPos
+from epd7in5b import EPD
+import uuid
+
+WHITE = 1
+BLACK = 0
+
+# Class for holding the details of the img
+class DispImg():
+    def __init__(self, image, x, y, size, color):
+        self.image = image
+        self.x = x
+        self.y = y
+        self.size = size
+        self.endx = 0
+        self.endy = 0
+        self.color = color
+
+class Composite (TextPos):
+
+    def __init__(self, autoUpdate = True):
+        super(Composite, self).__init__(autoUpdate)
+        self.papirus = EPD()
+        self.papirus.init()
+        self.allImg = dict()
+        self.image = Image.new('1', self.papirus.size, WHITE)
+        self.imageRed = Image.new('1', self.papirus.size, WHITE)
+
+    def AddImg(self, image, x=0, y=0, size = (10,10), Id = None, color = 0):
+        # Create a new Id if none is supplied
+        if Id == None:
+            Id = str(uuid.uuid4())
+
+        image = Image.open(image)
+        image = ImageOps.grayscale(image)
+        image = image.resize(size)
+        image = image.convert("1", dither=Image.FLOYDSTEINBERG)
+
+        # If the Id doesn't exist, add it  to the dictionary
+        if Id not in self.allImg:
+            self.allImg[Id] = DispImg(image, x, y, size, color)
+            # add the img to the image
+            self.addToImageImg(Id)
+            #Automatically show?
+            if self.autoUpdate:
+                self.WriteAll()
+
+    def UpdateImg(self, Id, image):
+        # If the ID supplied is in the dictionary, update the img
+        # Currently ONLY the img is update
+        if Id in self.allImg:
+            image = Image.open(image)
+            image = ImageOps.grayscale(image)
+            image = image.resize(self.allImg[Id].size)
+            image = image.convert("1", dither=Image.FLOYDSTEINBERG)
+
+            self.allImg[Id].image = image
+            
+            # Remove from the old img from the image (that doesn't use the actual img)
+            self.removeImageImg(Id)
+            # Add the new img to the image
+            self.addToImageImg(Id)
+            #Automatically show?
+            if self.autoUpdate:
+                self.WriteAll()
+
+    def RemoveImg(self, Id):
+        # If the ID supplied is in the dictionary, remove it.
+        if Id in self.allImg:
+            self.removeImageImg(Id)
+            del self.allImg[Id]
+
+            #Automatically show?
+            if self.autoUpdate:
+                self.WriteAll()
+
+    def removeImageImg(self, Id):
+        # prepare for drawing
+        image = self.image if self.allImg[Id].color == 0 else self.imageRed
+        filler = Image.new('1', self.allImg[Id].size, WHITE)
+        # Draw over the top of the img with a rectangle to cover it
+        x =  self.allImg[Id].x
+        y =  self.allImg[Id].y
+        image.paste(filler,(x,y))
+
+    def addToImageImg(self, Id):
+        x =  self.allImg[Id].x
+        y =  self.allImg[Id].y
+        image = self.image if self.allImg[Id].color == 0 else self.imageRed
+
+        image.paste(self.allImg[Id].image,(x,y))
